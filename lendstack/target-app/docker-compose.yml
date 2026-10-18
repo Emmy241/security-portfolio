@@ -1,0 +1,24 @@
+  api:
+    image: lendstack-api-test:latest
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      LOG_DIR: /var/log/lendstack
+    volumes:
+      - api-logs:/var/log/lendstack
+      - keys-vol:/app/src/keys
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks: [lendstack-net]
+
+# add under volumes:
+volumes:
+  pgdata:
+  api-logs:
+  fluent-out:
+  keys-vol:

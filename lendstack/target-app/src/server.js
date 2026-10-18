@@ -1,33 +1,62 @@
-const http = require('http');
-const fs   = require('fs');
-const path = require('path');
+const express = require('express');
+const crypto  = require('crypto');
+const { log } = require('./log');
+const authRoutes = require('./auth/routes');
+const { requireAuth } = require('./auth/middleware');
+const { publicKey } = require('./keys');
+const pool = require('./db');
 
-const LOG_DIR = process.env.LOG_DIR || '/var/log/lendstack';
-fs.mkdirSync(LOG_DIR, { recursive: true });
-const logStream = fs.createWriteStream(path.join(LOG_DIR, 'api.log'), { flags: 'a' });
+const app = express();
+app.use(express.json({ limit: '1mb' }));
 
-function log(obj) {
-  const line = JSON.stringify({ ts: new Date().toISOString(), ...obj }) + '\n';
-  process.stdout.write(line);
-  logStream.write(line);
-}
-
-const server = http.createServer((req, res) => {
-  log({
-    event: 'http.request',
+app.use((req, res, next) => {
+  req.id = crypto.randomUUID();
+  res.set('X-Request-Id', req.id);
+  const start = Date.now();
+  res.on('finish', () => log({
     sourcetype: 'lendstack:http',
+    event: 'http.request',
+    request_id: req.id,
     method: req.method,
-    path: req.url,
-    outcome: 'ok'
-  });
-  if (req.url === '/healthz') {
-    res.writeHead(200, { 'content-type': 'application/json' });
-    return res.end(JSON.stringify({ status: 'ok', service: 'lendstack-api' }));
-  }
-  res.writeHead(404, { 'content-type': 'application/json' });
-  res.end(JSON.stringify({ error: 'not_found' }));
+    path: req.path,
+    status: res.statusCode,
+    latency_ms: Date.now() - start,
+    actor_ip: req.ip,
+  }));
+  next();
 });
 
-server.listen(Number(process.env.PORT) || 3000, '0.0.0.0', () => {
-  log({ event: 'server.start', port: Number(process.env.PORT) || 3000, sourcetype: 'lendstack:http' });
+app.get('/healthz', (req, res) => res.json({ status: 'ok', service: 'lendstack-api' }));
+
+// V-01 exploitation surface: raw PEM for the HS256-with-public-key trick.
+app.get('/.well-known/public.pem', (req, res) => {
+  res.type('application/x-pem-file').send(publicKey);
 });
+
+// Standards-compliant JWKS (equivalent information).
+app.get('/.well-known/jwks.json', (req, res) => {
+  const { createPublicKey } = require('crypto');
+  const jwk = createPublicKey(publicKey).export({ format: 'jwk' });
+  res.json({ keys: [{ ...jwk, kid: 'default', use: 'sig', alg: 'RS256' }] });
+});
+
+app.use('/api/v1/auth', authRoutes);
+
+// Protected endpoint — target for V-01 / V-02 / V-08 exploits.
+app.get('/api/v1/users/me', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, tenant_id, email, role FROM users WHERE id = $1', [req.user.id]
+    );
+    res.json({ user: rows[0] || null });
+  } catch (e) {
+    log({ sourcetype: 'lendstack:http', event: 'handler.error',
+          request_id: req.id, path: req.path, error: e.code || e.message });
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+const port = Number(process.env.PORT) || 3000;
+app.listen(port, '0.0.0.0', () =>
+  log({ sourcetype: 'lendstack:http', event: 'server.start', port })
+);
