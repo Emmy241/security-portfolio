@@ -1,0 +1,7 @@
+V-33 — Maker-checker absent on transfer approval
+
+Created:  8c94f81e-52ea-43dd-8119-24a7834ab304
+Approve:  204 (success)
+
+Same actor (owner@acme-lending.test) both created and approved the transfer.
+No separation of duties between request and approval.

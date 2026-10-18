@@ -5,6 +5,11 @@ const authRoutes = require('./auth/routes');
 const { requireAuth } = require('./auth/middleware');
 const { publicKey } = require('./keys');
 const pool = require('./db');
+const { attachTenant } = require('./tenancy/middleware');
+const { getInvoiceById, listInvoices } = require('./repositories/invoices');
+const { downloadFile } = require('./repositories/files');
+const { exportInvoices } = require('./admin/export');
+const { createTransfer, approveTransfer } = require('./money/transfers');
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -28,12 +33,10 @@ app.use((req, res, next) => {
 
 app.get('/healthz', (req, res) => res.json({ status: 'ok', service: 'lendstack-api' }));
 
-// V-01 exploitation surface: raw PEM for the HS256-with-public-key trick.
 app.get('/.well-known/public.pem', (req, res) => {
   res.type('application/x-pem-file').send(publicKey);
 });
 
-// Standards-compliant JWKS (equivalent information).
 app.get('/.well-known/jwks.json', (req, res) => {
   const { createPublicKey } = require('crypto');
   const jwk = createPublicKey(publicKey).export({ format: 'jwk' });
@@ -42,7 +45,6 @@ app.get('/.well-known/jwks.json', (req, res) => {
 
 app.use('/api/v1/auth', authRoutes);
 
-// Protected endpoint — target for V-01 / V-02 / V-08 exploits.
 app.get('/api/v1/users/me', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -55,6 +57,94 @@ app.get('/api/v1/users/me', requireAuth, async (req, res) => {
     res.status(500).json({ error: 'internal_error' });
   }
 });
+
+// === a3 additions (M2 — tenancy) ===
+
+app.get('/api/v1/invoices', requireAuth, attachTenant, async (req, res) => {
+  try {
+    const rows = await listInvoices(req);
+    res.json({ invoices: rows });
+  } catch (e) {
+    log({ sourcetype: 'lendstack:http', event: 'handler.error',
+          request_id: req.id, path: req.path, error: e.code || e.message });
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.get('/api/v1/invoices/:id', requireAuth, attachTenant, async (req, res) => {
+  try {
+    const inv = await getInvoiceById(req, req.params.id);
+    if (!inv) return res.status(404).json({ error: 'not_found' });
+    res.json({ invoice: inv });
+  } catch (e) {
+    log({ sourcetype: 'lendstack:http', event: 'handler.error',
+          request_id: req.id, path: req.path, error: e.code || e.message });
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.get('/api/v1/files/:id', requireAuth, attachTenant, async (req, res) => {
+  try {
+    const f = await downloadFile(req, req.params.id);
+    if (!f) return res.status(404).json({ error: 'not_found' });
+    res.json({ file: f });
+  } catch (e) {
+    log({ sourcetype: 'lendstack:http', event: 'handler.error',
+          request_id: req.id, path: req.path, error: e.code || e.message });
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.post('/api/v1/transfers', requireAuth, attachTenant, async (req, res) => {
+  try {
+    const { from_account_id, to_account_id, amount_cents } = req.body || {};
+    if (!from_account_id || !to_account_id || typeof amount_cents !== 'number') {
+      return res.status(400).json({ error: 'missing_fields' });
+    }
+    const t = await createTransfer(req, from_account_id, to_account_id, amount_cents);
+    log({ sourcetype: 'lendstack:money', event: 'transfer.created',
+          tenant_id: req.user.tenant_id, actor_id: req.user.id,
+          transfer_id: t.id, amount_cents, outcome: 'ok' });
+    res.status(201).json({ transfer: t });
+  } catch (e) {
+    log({ sourcetype: 'lendstack:http', event: 'handler.error',
+          request_id: req.id, path: req.path, error: e.code || e.message });
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.post('/api/v1/transfers/:id/approve', requireAuth, attachTenant, async (req, res) => {
+  try {
+    const result = await approveTransfer(req, req.params.id);
+    if (result.error === 'not_found') return res.status(404).json({ error: 'not_found' });
+    if (result.error === 'not_pending') return res.status(409).json({ error: 'not_pending' });
+    log({ sourcetype: 'lendstack:money', event: 'transfer.approved',
+          tenant_id: req.user.tenant_id, actor_id: req.user.id,
+          transfer_id: req.params.id, outcome: 'ok' });
+    res.status(204).end();
+  } catch (e) {
+    log({ sourcetype: 'lendstack:http', event: 'handler.error',
+          request_id: req.id, path: req.path, error: e.code || e.message });
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.get('/api/v1/admin/export', requireAuth, attachTenant, async (req, res) => {
+  try {
+    if (req.user.role !== 'owner') return res.status(403).json({ error: 'forbidden' });
+    const rows = await exportInvoices(req);
+    log({ sourcetype: 'lendstack:admin', event: 'export.requested',
+          tenant_id: req.user.tenant_id, actor_id: req.user.id,
+          row_count: rows.length, outcome: 'ok' });
+    res.json({ invoices: rows });
+  } catch (e) {
+    log({ sourcetype: 'lendstack:http', event: 'handler.error',
+          request_id: req.id, path: req.path, error: e.code || e.message });
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+// === end a3 additions ===
 
 const port = Number(process.env.PORT) || 3000;
 app.listen(port, '0.0.0.0', () =>
