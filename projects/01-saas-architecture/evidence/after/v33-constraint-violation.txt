@@ -1,0 +1,2 @@
+SET
+ERROR:  new row for relation "transfers" violates check constraint "transfers_no_self_approval"

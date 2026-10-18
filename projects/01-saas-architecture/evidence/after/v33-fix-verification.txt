@@ -1,0 +1,13 @@
+V-33 fix verification (secure-reference, migration 003 applied):
+
+Test 1 — self-approval by owner@acme-lending.test:    403 (blocked by app check)
+Test 2 — approval by different user (auditor@acme):   204 (allowed)
+Test 3 — direct UPDATE approved_by = created_by:      CHECK constraint violation (DB layer)
+Test 4 — transfer.approval_denied audit event:        emitted, reason=self_approval
+
+Before fix: 204 on self-approval, approved_by == created_by in DB, no audit event.
+After fix:  403 on self-approval, DB rejects same-user UPDATE, denial logged.
+
+Two layers enforced:
+  - Application check in approveTransfer() → 403 with clear error
+  - DB constraint transfers_no_self_approval → CHECK violation for any code path

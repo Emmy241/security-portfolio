@@ -58,8 +58,6 @@ app.get('/api/v1/users/me', requireAuth, async (req, res) => {
   }
 });
 
-// === a3 additions (M2 — tenancy) ===
-
 app.get('/api/v1/invoices', requireAuth, attachTenant, async (req, res) => {
   try {
     const rows = await listInvoices(req);
@@ -118,6 +116,7 @@ app.post('/api/v1/transfers/:id/approve', requireAuth, attachTenant, async (req,
     const result = await approveTransfer(req, req.params.id);
     if (result.error === 'not_found') return res.status(404).json({ error: 'not_found' });
     if (result.error === 'not_pending') return res.status(409).json({ error: 'not_pending' });
+    if (result.error === 'self_approval_denied') return res.status(403).json({ error: 'self_approval_denied' });
     log({ sourcetype: 'lendstack:money', event: 'transfer.approved',
           tenant_id: req.user.tenant_id, actor_id: req.user.id,
           transfer_id: req.params.id, outcome: 'ok' });
@@ -143,8 +142,6 @@ app.get('/api/v1/admin/export', requireAuth, attachTenant, async (req, res) => {
     res.status(500).json({ error: 'internal_error' });
   }
 });
-
-// === end a3 additions ===
 
 const port = Number(process.env.PORT) || 3000;
 app.listen(port, '0.0.0.0', () =>

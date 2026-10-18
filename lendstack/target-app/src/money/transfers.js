@@ -1,3 +1,4 @@
+const { log } = require('../log');
 // V-33: money-movement approval has no maker-checker enforcement.
 //
 // The schema has approved_by, but nothing prevents approved_by == created_by.
@@ -27,12 +28,24 @@ async function approveTransfer(req, transferId) {
     if (existing.length === 0) return { error: 'not_found' };
     if (existing[0].status !== 'pending') return { error: 'not_pending' };
 
-    // V-33: no maker-checker check. req.user.id may equal created_by.
+    // V-33 FIX: maker-checker — approver must be a different user
+    if (existing[0].created_by === req.user.id) {
+      log({
+        sourcetype: 'lendstack:money',
+        event: 'transfer.approval_denied',
+        tenant_id: req.user.tenant_id,
+        actor_id: req.user.id,
+        transfer_id: transferId,
+        reason: 'self_approval',
+        outcome: 'fail',
+      });
+      return { error: 'self_approval_denied' };
+    }
+
     await client.query(
       `UPDATE transfers SET status = 'approved', approved_by = $1 WHERE id = $2`,
       [req.user.id, transferId]
     );
-
     return { ok: true };
   });
 }
