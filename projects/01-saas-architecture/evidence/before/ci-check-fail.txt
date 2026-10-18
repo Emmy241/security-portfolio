@@ -1,0 +1,28 @@
+FAIL: tenant isolation invariants violated
+Tables owned by lendstack_app (should be lendstack_owner):
+  - accounts
+  - audit_log
+  - files
+  - invoices
+  - ledger_entries
+  - loan_applications
+  - refresh_tokens
+  - support_messages
+  - tenants
+  - transfers
+  - users
+  - webhooks
+Tables with RLS but NOT FORCE (owner bypasses policies):
+  - accounts
+  - audit_log
+  - files
+  - invoices
+  - ledger_entries
+  - loan_applications
+  - refresh_tokens
+  - support_messages
+  - transfers
+  - users
+  - webhooks
+
+Apply infra/migrations/001-fix-v30-tenant-ownership.sql to remediate.

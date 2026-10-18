@@ -1,0 +1,8 @@
+  relname  |      owner      | relforcerowsecurity 
+-----------+-----------------+---------------------
+ files     | lendstack_owner | t
+ invoices  | lendstack_owner | t
+ transfers | lendstack_owner | t
+ users     | lendstack_owner | t
+(4 rows)
+

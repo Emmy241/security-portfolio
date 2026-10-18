@@ -1,0 +1,10 @@
+After applying infra/migrations/001-fix-v30-tenant-ownership.sql +
+infra/migrations/002-fix-login-rls.sql on secure-reference:
+
+  V-10  (GET /invoices/:id, cross-tenant)   → 404 (was 200 with Beta's invoice)
+  V-31  (GET /files/:id, cross-tenant)      → 404 (was 200 with Beta's file)
+  V-32  (GET /admin/export)                 → count=5, tenants=[a] (was 15 across a,b,c)
+
+One architectural fix (V-30) closes three application-layer findings, because
+all three depended on RLS being inert. V-33 (maker-checker) is unaffected —
+separate control, separate fix.

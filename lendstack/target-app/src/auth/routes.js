@@ -41,27 +41,60 @@ router.post('/login', async (req, res) => {
     authLog(req, 'login.failure', { actor_email: email || null, outcome: 'fail', reason: 'missing_fields' });
     return res.status(400).json({ error: 'missing_fields' });
   }
-  const { rows } = await pool.query(
-    'SELECT id, tenant_id, email, password_hash, role FROM users WHERE email = $1', [email]
-  );
-  if (rows.length === 0) {
+
+  // V-35: login must find a user by email before knowing their tenant.
+  // Transactional lookup uses users_login_lookup policy (email match) to
+  // read the user row, then sets app.tenant_id for the refresh-token INSERT
+  // which is tenant-scoped by RLS.
+  const client = await pool.connect();
+  let user = null;
+  let access = null;
+  let refresh = null;
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.login_email', $1, true)", [email]);
+
+    const { rows } = await client.query(
+      'SELECT id, tenant_id, email, password_hash, role FROM users WHERE email = $1',
+      [email]
+    );
+    user = rows[0];
+
+    if (user) {
+      const ok = await bcrypt.compare(password, user.password_hash);
+      if (ok) {
+        // Now we know the tenant — set app.tenant_id for scoped writes
+        await client.query("SELECT set_config('app.tenant_id', $1, true)", [user.tenant_id]);
+
+        access  = signAccessToken({ user_id: user.id, tenant_id: user.tenant_id, role: user.role, email: user.email });
+        refresh = crypto.randomBytes(32).toString('hex');
+
+        await client.query(
+          `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
+           VALUES (gen_random_uuid(), $1, $2, now() + interval '14 days')`,
+          [user.id, sha256(refresh)]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    client.release();
+    throw e;
+  }
+  client.release();
+
+  if (!user) {
     authLog(req, 'login.failure', { actor_email: email, outcome: 'fail', reason: 'no_such_user' });
     return res.status(401).json({ error: 'invalid_credentials' });
   }
-  const user = rows[0];
-  const ok = await bcrypt.compare(password, user.password_hash);
-  if (!ok) {
+  if (!access) {
     authLog(req, 'login.failure', { tenant_id: user.tenant_id, actor_id: user.id,
       actor_email: email, outcome: 'fail', reason: 'bad_password' });
     return res.status(401).json({ error: 'invalid_credentials' });
   }
-  const access  = signAccessToken({ user_id: user.id, tenant_id: user.tenant_id, role: user.role, email: user.email });
-  const refresh = crypto.randomBytes(32).toString('hex');
-  await pool.query(
-    `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
-     VALUES (gen_random_uuid(), $1, $2, now() + interval '14 days')`,
-    [user.id, sha256(refresh)]
-  );
+
   authLog(req, 'login.success', { tenant_id: user.tenant_id, actor_id: user.id,
     actor_email: email, outcome: 'ok', role: user.role });
   res.json({ access_token: access, refresh_token: refresh, token_type: 'Bearer', expires_in: 86400 });
