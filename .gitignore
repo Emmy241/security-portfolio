@@ -1,0 +1,13 @@
+# security-portfolio/.gitignore
+#
+# IMPORTANT: ".env" is deliberately NOT listed here.
+# lendstack/.env is committed at commit 1 (containing a real-looking
+# credential) and "removed" at commit 6. Adding ".env" to this file now
+# would destroy the V-06 finding before it exists.
+# At commit 6: delete lendstack/.env, add ".env" below, and
+# `git rm --cached lendstack/.env` before committing.
+
+node_modules/
+*.log
+out.log
+.DS_Store

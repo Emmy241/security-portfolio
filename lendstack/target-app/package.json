@@ -1,0 +1,8 @@
+{
+  "name": "lendstack-api",
+  "private": true,
+  "version": "0.0.1",
+  "description": "STUB — replaced by the real API in a2/M1",
+  "main": "src/server.js",
+  "scripts": { "start": "node src/server.js" }
+}
