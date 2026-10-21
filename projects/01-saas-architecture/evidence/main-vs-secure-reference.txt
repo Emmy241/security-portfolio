@@ -1,0 +1,22 @@
+LendStack — main (vulnerable) vs secure-reference (fixed)
+
+=== main — vulnerable state ===
+V-10 IDOR on /invoices/:id:   200  (Acme token reads Beta's invoice; tenant_id "b0000001-...")
+V-31 cross-tenant file:       200  (Acme token reads Beta's file + storage_path)
+V-32 admin export:            15   (all 3 tenants' invoices returned; 2969 bytes)
+V-33 self-approval:           204  (created_by == approved_by in DB)
+V-30 RLS:                     3    (SET app.tenant_id + query still returns all tenants)
+
+=== secure-reference — fixed state ===
+V-10 IDOR on /invoices/:id:   404  (tenant filter + RLS both applied)
+V-31 cross-tenant file:       404  (tenant_id column + column RLS + withTenant)
+V-32 admin export:            5    (scoped to caller's tenant; 1 tenant in response)
+V-33 self-approval:           403  (app check) + DB CHECK constraint violation (direct UPDATE)
+V-30 RLS:                     1    (SET app.tenant_id scopes correctly)
+CI check (rls-check.sh):      PASS (owner != app role, FORCE RLS set, no BYPASSRLS)
+Lint check (no-pool-in-repos.sh): PASS (all repositories use req.withTenant)
+
+=== Net ===
+4 findings, 4 fixes, 2 CI enforcement checks, 6 migrations applied.
+The CI check catches configuration drift; the lint check catches code-pattern regression.
+Both must pass on every PR to secure-reference.
