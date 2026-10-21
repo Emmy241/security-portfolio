@@ -1,15 +1,17 @@
-// V-32: bulk admin export uses req.pool directly instead of req.withTenant.
-// The route looks authorized (requireRole('owner')) but the query returns
-// every tenant's invoices — the tenant context middleware was never
-// invoked on this path.
+// V-32 fix: exportInvoices uses req.withTenant instead of req.pool directly.
+// Both layers applied: RLS (app.tenant_id set) + query filter.
 
 async function exportInvoices(req) {
-  const { rows } = await req.pool.query(
-    `SELECT id, tenant_id, number, amount_cents, status, due_date
-     FROM invoices
-     ORDER BY created_at DESC`
-  );
-  return rows;
+  return req.withTenant(async (client) => {
+    const { rows } = await client.query(
+      `SELECT id, tenant_id, number, amount_cents, status, due_date
+       FROM invoices
+       WHERE tenant_id = $1
+       ORDER BY created_at DESC`,
+      [req.user.tenant_id]
+    );
+    return rows;
+  });
 }
 
 module.exports = { exportInvoices };
