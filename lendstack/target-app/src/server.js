@@ -2,13 +2,16 @@ const express = require('express');
 const crypto  = require('crypto');
 const { log } = require('./log');
 const authRoutes = require('./auth/routes');
+const adminRoutes = require('./admin/routes');
+const webhookRoutes = require('./webhooks/routes');
 const { requireAuth } = require('./auth/middleware');
+const { attachTenant } = require('./tenancy/middleware');
 const { publicKey } = require('./keys');
 const pool = require('./db');
-const { attachTenant } = require('./tenancy/middleware');
-const { getInvoiceById, listInvoices } = require('./repositories/invoices');
+const {
+  getInvoiceById, listInvoices, createInvoice, updateInvoice, deleteInvoice
+} = require('./repositories/invoices');
 const { downloadFile } = require('./repositories/files');
-const { exportInvoices } = require('./admin/export');
 const { createTransfer, approveTransfer } = require('./money/transfers');
 
 const app = express();
@@ -44,6 +47,8 @@ app.get('/.well-known/jwks.json', (req, res) => {
 });
 
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/webhooks', webhookRoutes);
 
 app.get('/api/v1/users/me', requireAuth, async (req, res) => {
   try {
@@ -58,6 +63,7 @@ app.get('/api/v1/users/me', requireAuth, async (req, res) => {
   }
 });
 
+// --- Invoices CRUD ---
 app.get('/api/v1/invoices', requireAuth, attachTenant, async (req, res) => {
   try {
     const rows = await listInvoices(req);
@@ -81,6 +87,43 @@ app.get('/api/v1/invoices/:id', requireAuth, attachTenant, async (req, res) => {
   }
 });
 
+app.post('/api/v1/invoices', requireAuth, attachTenant, async (req, res) => {
+  try {
+    const result = await createInvoice(req, req.body || {});
+    if (result.error) return res.status(400).json({ error: result.error });
+    res.status(201).json({ invoice: result });
+  } catch (e) {
+    log({ sourcetype: 'lendstack:http', event: 'handler.error',
+          request_id: req.id, path: req.path, error: e.code || e.message });
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.patch('/api/v1/invoices/:id', requireAuth, attachTenant, async (req, res) => {
+  try {
+    const inv = await updateInvoice(req, req.params.id, req.body || {});
+    if (!inv) return res.status(404).json({ error: 'not_found' });
+    res.json({ invoice: inv });
+  } catch (e) {
+    log({ sourcetype: 'lendstack:http', event: 'handler.error',
+          request_id: req.id, path: req.path, error: e.code || e.message });
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.delete('/api/v1/invoices/:id', requireAuth, attachTenant, async (req, res) => {
+  try {
+    const deleted = await deleteInvoice(req, req.params.id);
+    if (!deleted) return res.status(404).json({ error: 'not_found' });
+    res.status(204).end();
+  } catch (e) {
+    log({ sourcetype: 'lendstack:http', event: 'handler.error',
+          request_id: req.id, path: req.path, error: e.code || e.message });
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+// --- Files ---
 app.get('/api/v1/files/:id', requireAuth, attachTenant, async (req, res) => {
   try {
     const f = await downloadFile(req, req.params.id);
@@ -93,6 +136,7 @@ app.get('/api/v1/files/:id', requireAuth, attachTenant, async (req, res) => {
   }
 });
 
+// --- Transfers ---
 app.post('/api/v1/transfers', requireAuth, attachTenant, async (req, res) => {
   try {
     const { from_account_id, to_account_id, amount_cents } = req.body || {};
@@ -121,21 +165,6 @@ app.post('/api/v1/transfers/:id/approve', requireAuth, attachTenant, async (req,
           tenant_id: req.user.tenant_id, actor_id: req.user.id,
           transfer_id: req.params.id, outcome: 'ok' });
     res.status(204).end();
-  } catch (e) {
-    log({ sourcetype: 'lendstack:http', event: 'handler.error',
-          request_id: req.id, path: req.path, error: e.code || e.message });
-    res.status(500).json({ error: 'internal_error' });
-  }
-});
-
-app.get('/api/v1/admin/export', requireAuth, attachTenant, async (req, res) => {
-  try {
-    if (req.user.role !== 'owner') return res.status(403).json({ error: 'forbidden' });
-    const rows = await exportInvoices(req);
-    log({ sourcetype: 'lendstack:admin', event: 'export.requested',
-          tenant_id: req.user.tenant_id, actor_id: req.user.id,
-          row_count: rows.length, outcome: 'ok' });
-    res.json({ invoices: rows });
   } catch (e) {
     log({ sourcetype: 'lendstack:http', event: 'handler.error',
           request_id: req.id, path: req.path, error: e.code || e.message });

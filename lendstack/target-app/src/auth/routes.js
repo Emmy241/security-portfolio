@@ -3,6 +3,7 @@ const bcrypt  = require('bcryptjs');
 const crypto  = require('crypto');
 const pool    = require('../db');
 const { authLog } = require('../log');
+
 const { signAccessToken } = require('../jwt');
 const { generateResetToken } = require('./reset');
 
@@ -16,21 +17,37 @@ function sha256(s) { return crypto.createHash('sha256').update(s).digest('hex');
 router.post('/register', async (req, res) => {
   const { tenant_id, email, password, role = 'analyst' } = req.body || {};
   if (!tenant_id || !email || !password) return res.status(400).json({ error: 'missing_fields' });
-  // V-11: role taken from body without authorization check
+
+  // V-11: role taken from body without authorization check.
+  // Also: caller picks tenant_id freely, no proof of membership.
   const hash = await bcrypt.hash(password, 10);
+
+  // Transaction with app.tenant_id set so RLS INSERT policy is satisfied.
+  // The attacker controls tenant_id (from body), so they control which
+  // tenant's RLS policy is satisfied — cross-tenant registration.
+  const client = await pool.connect();
   try {
-    const { rows } = await pool.query(
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenant_id]);
+
+    const { rows } = await client.query(
       `INSERT INTO users (id, tenant_id, email, password_hash, role)
        VALUES (gen_random_uuid(), $1, $2, $3, $4)
        RETURNING id, tenant_id, email, role`,
       [tenant_id, email, hash, role]
     );
-    authLog(req, 'register.success', { tenant_id, actor_id: rows[0].id, actor_email: email, outcome: 'ok', role });
+    await client.query('COMMIT');
+
+    authLog(req, 'register.success', { tenant_id, actor_id: rows[0].id,
+      actor_email: email, outcome: 'ok', role });
     res.status(201).json({ user: rows[0] });
   } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
     authLog(req, 'register.failure', { tenant_id, actor_email: email, outcome: 'fail',
       reason: e.code === '23505' ? 'duplicate' : 'db_error' });
     res.status(409).json({ error: 'registration_failed' });
+  } finally {
+    client.release();
   }
 });
 

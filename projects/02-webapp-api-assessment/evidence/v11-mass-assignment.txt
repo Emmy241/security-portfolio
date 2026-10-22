@@ -1,0 +1,23 @@
+V-11 — Mass assignment on registration (privilege escalation via role field)
+
+POST /api/v1/auth/register accepts:
+  {"tenant_id": "...", "email": "...", "password": "...", "role": "owner"}
+
+Attack 1 — escalate to owner on own tenant (Acme):
+  Register:        201, user created with role=owner
+  Login:           200, valid RS256 token
+  GET /admin/export: 200, 5 invoices (owner-only endpoint)
+  Control - unauth:  401 (route is gated)
+  Control - analyst: 403 (route is genuinely role-gated)
+
+Attack 2 — cross-tenant registration (Beta):
+  Register:        201, user created on Beta tenant with role=owner
+  Login:           200
+  GET /admin/export: 200, 5 invoices, tenant_id=b0000001-...
+
+Two failures compound:
+  1. role accepted from body without authorization check (V-11 proper)
+  2. tenant_id accepted from body without membership proof (adjacent)
+
+Fix (M8): require invitation token or admin auth for user creation;
+          never accept role/tenant_id from unauthenticated body.
