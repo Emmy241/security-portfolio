@@ -1,0 +1,33 @@
+V-19 — Business Logic Flaws in POST /api/v1/transfers
+
+Root cause: money/transfers.js -> createTransfer()
+  1. Accepts negative or zero amounts (no CHECK constraint).
+  2. Ignores idempotency keys (no column, no deduplication check).
+  3. No row-level locking to prevent concurrent race conditions.
+
+Demo 1 — Negative Amount
+  POST /transfers {"amount_cents": -50000, ...}
+  → 201 Created {"status": "pending"}
+  (In a real ledger, this steals money from the destination account)
+
+Demo 2 — Double-Spend (No Idempotency)
+  Fired two identical requests with "Idempotency-Key: req-12345"
+  → Returned two DIFFERENT transfer UUIDs
+  (A user who double-clicks "Send" executes the transaction twice)
+
+Demo 3 — Database State
+  SELECT amount_cents, status FROM transfers LIMIT 3;
+  → Two 100,000 transfers, one -50,000 transfer.
+
+Impact:
+  - Direct financial loss: double-spending, negative transfers reversing funds.
+  - Integrity violation: bypasses the intent of the transfer flow.
+  - In a high-volume system, a race condition (firing 10 requests at once)
+    can drain an account before the balance check (if one existed) commits.
+
+Fix (M8):
+  - Add DB CHECK (amount_cents > 0) on the transfers table.
+  - Add an `idempotency_key` column (unique constraint) to the transfers table.
+    The API must require the header and check for the key before inserting.
+  - Use `SELECT ... FOR UPDATE` on the accounts table to lock balances
+    during the transfer creation (prevents race conditions).
