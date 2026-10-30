@@ -42,6 +42,3 @@ Built a complete ISMS package from a blank page. Includes a 12-month roadmap, a 
 - **AppSec/Dev:** Node.js, Postgres (RLS), Docker, GitHub Actions, Bash.
 - **GRC:** ISO 27001, PCI DSS, GLBA, SOX.
 
-## Contact
-- **LinkedIn:** [Your Link]
-- **Email:** [Your Email]
