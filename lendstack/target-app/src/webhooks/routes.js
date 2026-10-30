@@ -20,8 +20,8 @@ router.post('/', requireAuth, attachTenant, async (req, res) => {
   try {
     const webhook = await req.withTenant(async (client) => {
       const { rows } = await client.query(
-        `INSERT INTO webhooks (tenant_id, url, secret)
-         VALUES ($1, $2, gen_random_uuid()::text)
+        `INSERT INTO webhooks (id, tenant_id, url, secret)
+         VALUES (gen_random_uuid(), $1, $2, gen_random_uuid()::text)
          RETURNING id, url, created_at`,
         [req.user.tenant_id, url]
       );
