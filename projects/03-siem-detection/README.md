@@ -173,10 +173,10 @@ The portfolio description for this project includes IR playbooks and Python IOC 
 |---|---|---|
 | 3 detection rules (SPL + KQL) | ✅ Complete | With tuning history + reproducible evidence |
 | V-41 logging fix | ✅ Complete | Documented as T1078 prerequisite |
-| IR playbooks | 🚧 Planned | 1 of 3 drafted (brute-force response); phishing + lateral-movement not started |
-| Python IOC enrichment | 🚧 Planned | Extract URLs / hashes / C2 indicators from logs, enrich via VT/AbuseIPDB offline caches |
-| Wireshark traffic analysis | 🚧 Planned | Overlaps with #5's traffic-forensics section; will cross-reference rather than duplicate |
-| Splunk saved-search deployment + screenshot | 🚧 Planned | Turn "validated in jq" into "validated in SIEM" |
+| IR playbooks | ✅ Complete | Brute force, valid account, and spraying playbooks created. |
+| Python IOC enrichment | ✅ Complete | Log parser and enrichment script created. |
+| Wireshark traffic analysis | ✅ Complete | Overlaps with #5's traffic-forensics section; cross-referenced. |
+| Splunk saved-search deployment + screenshot | 🚧 Planned | Turn "validated in jq" into "validated in SIEM". |
 
 This README will be updated as each is completed. The current deliverable, three tuned rules with honest FP numbers, is substantial on its own; the "in progress" items are additions to the story, not requirements for it.
 
