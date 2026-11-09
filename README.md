@@ -22,7 +22,7 @@ Conducted a grey-box penetration test against LendStack. Found 6 vulnerabilities
 
 ### [3. SIEM Detection Engineering & Incident Response](./projects/03-siem-detection/)
 *Defensive Security*
-Built dual-platform detection rules (Splunk SPL and Sentinel KQL) mapped to MITRE ATT&CK. Reduced false positives by 40% through iterative tuning. Includes incident response playbooks and a Python IOC enrichment script.
+Built dual-platform detection rules (Splunk SPL and Sentinel KQL) mapped to MITRE ATT&CK. On the lab dataset, tuning cut false positives from 147 to 6 across three rules, while true positives held or rose. Includes incident response playbooks and a Python IOC enrichment script.
 
 ### [4. OAuth & JWT Security Review](./projects/04-oauth-jwt-review/)
 *Authentication Security*
@@ -42,6 +42,11 @@ Built a complete ISMS package from a blank page. Includes a 12-month roadmap, a 
 - **AppSec/Dev:** Node.js, Postgres (RLS), Docker, GitHub Actions, Bash.
 - **GRC:** ISO 27001, PCI DSS, GLBA, SOX.
 
-## Contact
-- **LinkedIn:** [Your Link]
-- **Email:** [Your Email]
+## About
+
+These are reference builds, not client work. LendStack and its data are fictional, and its vulnerabilities are planted on purpose so each finding can be reproduced.
+
+Built by Emmanuel Ajayi, founder of [Tenitty](https://tenitty.com), an independent security consultancy for SaaS, fintech and AI products. The [sample Security Blueprint report](https://tenitty.com/security-blueprint#sample-report) is written from this LendStack work.
+
+- **Website:** [tenitty.com](https://tenitty.com)
+- **Email:** [hello@tenitty.com](mailto:hello@tenitty.com)

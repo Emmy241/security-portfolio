@@ -227,7 +227,7 @@ Not a numbered boundary, but crossing all of them: **authentication**. Which ide
 - Lint check `no-pool-in-repos.sh` enforces code invariants at deploy time
 
 **Controls absent or broken:**
-- **V-06** — `LendStack_App_Pr0d_2024!` in git history (committed at M0, "removed" in a later commit, still in history)
+- **V-06** — the application database password (`LendStack_App_****`) is committed in `lendstack/.env`, tracked since M0 and present in history
 - No secret rotation policy documented
 - No `log_connections` (V-42) — connection-time audit trail absent
 - Deployment to production not documented as a pipeline (this is a lab; but the *controls* required are named)

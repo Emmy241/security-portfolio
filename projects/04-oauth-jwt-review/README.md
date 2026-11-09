@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| **Status** | 5 findings (1 Critical, 2 High, 2 Medium) documented with reproducible evidence. |
+| **Status** | 5 findings (2 Critical, 1 High, 2 Medium) documented with reproducible evidence. |
 | **Worked example** | [LendStack](../../lendstack/) — the same fintech/lending SaaS used in #1 and #2 |
-| **Findings** | Critical: V-06 (Secrets in Git) · High: V-01 (Signature Bypass), V-03 (Refresh Not Rotated) · Medium: V-04 (No Revocation), V-08 (Missing Aud/Iss) |
+| **Findings** | Critical: V-01 (Signature Bypass), V-06 (Secrets in Git) · High: V-03 (Refresh Not Rotated) · Medium: V-04 (No Revocation), V-08 (Missing Aud/Iss) |
 | **Related** | [#2 (Web/API)](../02-webapp-api-assessment/) (V-11, V-13 rely on this auth layer) |
 
 ---
@@ -43,7 +43,7 @@ Every finding was proven against a live LendStack instance. V-06 is particularly
 
 | Finding | Severity | Impact | Root Cause |
 |---|---|---|---|
-| [**V-01** — Missing Signature Verification](findings/v01-signature-not-verified.md) | High | Authentication Bypass (forge any user) | `jwt.decode` used instead of `jwt.verify` in middleware |
+| [**V-01** — Missing Signature Verification](findings/v01-signature-not-verified.md) | **Critical** | Authentication Bypass (forge any user) | `jwt.decode` used instead of `jwt.verify` in middleware |
 | [**V-03** — Refresh Tokens Not Rotated](findings/v03-refresh-tokens-not-rotated.md) | High | Persistent access after password reset | Tokens never revoked on reuse or password change |
 | [**V-04** — No Revocation Path](findings/v04-no-token-revocation.md) | Medium | 24-hour attacker persistence | 24h expiry, no denylist, no `/logout` |
 | [**V-06** — Secrets in Git](findings/v06-secrets-in-git-history.md) | **Critical** | Full database access | `.env` committed to repo since initial commit |
